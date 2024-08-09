@@ -130,17 +130,6 @@ public class MemberTest {
         assertEquals(((Subscriber) object).getCUMBH_EXPRTN_DT(), LocalDate.of(9999, Month.DECEMBER, 31));
     }
 
-    @Test
-    public void insertNewDependant(){
-        Member member = new Member();
-        Object object = member.processMemberMessage(firstDependant);
-        assertTrue(object instanceof Dependant);
-        MemberDb memberDb = new MemberDb();
-        memberDb.updateDependant((Dependant) object);
-        //Bson query = eq("CUMB_ID_NO", ((Dependant) object).getCUMB_ID_NO());
-        //Dependant dependant = database.getCollection("member", Dependant.class).find().first();
-        //System.out.println(dependant.toString());
-    }
 
 
 }

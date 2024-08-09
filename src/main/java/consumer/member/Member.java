@@ -9,34 +9,64 @@ import consumer.member.db.MemberDb;
 import consumer.member.model.Dependant;
 import consumer.member.model.Subscriber;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Produced;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.util.Properties;
 
 public class Member {
     public Member() {}
 
-    public void streamLoop(){
-        //loop through individual records and pass them off to processMemberMessage and MemberDb class
-        //this method can be implimented once we have Kafka Connection Details
+    public static void main(String[] args) throws IOException {
+        // Set up Kafka Streams configuration
+        final Properties config = readConfig("<<path-to-prop file>>kafka.properties");
+        MemberProcessor memberProcessor = new MemberProcessor();
+        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "json-processing-app10");
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
+        config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
+
+        // Build the topology
+        StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, String> sourceStream = builder.stream("memberData");
+
+        sourceStream.peek((k,v) -> System.out.println(v));
+        sourceStream.foreach((k,v) -> memberProcessor.processMemberMessage(v));
+
+        // Start the streams application
+        KafkaStreams streams = new KafkaStreams(builder.build(), config);
+        streams.start();
+
+        // Add shutdown hook to stop the application gracefully
+        Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
     }
 
-    //parse message and determine what source it came from
-    public Object processMemberMessage(String message){
-        JsonObject rootObject = JsonParser.parseString(message).getAsJsonObject();
-        String source = rootObject.get("source").getAsString();
-        JsonObject afterImageObject = rootObject.get("afterImage").getAsJsonObject();
-        return parseAfterImage(source, afterImageObject);
-    }
+    public static Properties readConfig(final String configFile) throws IOException {
+        // reads the client configuration from client.properties
+        // and returns it as a Properties object
+        if (!Files.exists(Paths.get(configFile))) {
+            throw new IOException(configFile + " not found.");
+        }
 
-    //based on the source, parse the object in the right class
-    private Object parseAfterImage(String source, JsonObject afterImageObject) {
-        GsonBuilder gsonBuilder = new GsonBuilder();
-        gsonBuilder.registerTypeAdapter(LocalDate.class, new LocalDateDeserializer());
-        Gson gson = gsonBuilder.create();
-        return switch (source) {
-            case "subscriber" -> gson.fromJson(afterImageObject, Subscriber.class);
-            case "dependant" -> gson.fromJson(afterImageObject, Dependant.class);
-            // Add more cases as needed
-            default -> throw new IllegalArgumentException("Unknown source: " + source);
-        };
+        final Properties config = new Properties();
+        try (InputStream inputStream = new FileInputStream(configFile)) {
+            config.load(inputStream);
+        }
+
+        return config;
     }
 }
